@@ -8,6 +8,7 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
+	"runtime"
 	"strings"
 	"time"
 )
@@ -53,6 +54,13 @@ func main() {
 
 	counter := 0
 	board_found := false
+
+	if runtime.GOOS == "darwin" {
+		library_path := os.Getenv("DYLD_LIBRARY_PATH")
+		if !strings.Contains(library_path, bin_path) {
+			os.Setenv("DYLD_LIBRARY_PATH", bin_path+":"+library_path)
+		}
+	}
 
 	for counter < 10 && board_found == false {
 		PrintlnVerbose("Waiting for device...")
