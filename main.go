@@ -69,6 +69,10 @@ func main() {
 			fmt.Println(err)
 			os.Exit(1)
 		}
+		if counter == 4 {
+			fmt.Println("Flashing is taking longer than expected")
+			fmt.Println("Try pressing MASTER_RESET button")
+		}
 		if strings.Contains(string(out), "sensor_core") {
 			board_found = true
 			PrintlnVerbose("Device found!")
@@ -111,7 +115,7 @@ func main() {
 		fmt.Println("SUCCESS: Sketch will execute in about 5 seconds.")
 		os.Exit(0)
 	} else {
-		fmt.Println("ERROR: Timed out waiting for Arduino 101 on" + com_port)
+		fmt.Println("ERROR: Upload failed on " + com_port)
 		os.Exit(1)
 	}
 }
