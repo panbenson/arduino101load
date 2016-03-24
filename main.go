@@ -3,7 +3,6 @@ package main
 import (
 	"bufio"
 	"fmt"
-	"github.com/codeskyblue/go-sh"
 	"io"
 	"os"
 	"os/exec"
@@ -62,23 +61,27 @@ func main() {
 		}
 	}
 
-	for counter < 10 && board_found == false {
-		PrintlnVerbose("Waiting for device...")
-		out, err := sh.Command(dfu, dfu_flags, "-l").Output()
+	dfu_search_command := []string{dfu, dfu_flags, "-l"}
+
+	for counter < 100 && board_found == false {
+		if counter%10 == 0 {
+			PrintlnVerbose("Waiting for device...")
+		}
+		err, found := launchCommandAndWaitForOutput(dfu_search_command, "sensor_core", false)
 		if err != nil {
 			fmt.Println(err)
 			os.Exit(1)
 		}
-		if counter == 4 {
+		if counter == 40 {
 			fmt.Println("Flashing is taking longer than expected")
 			fmt.Println("Try pressing MASTER_RESET button")
 		}
-		if strings.Contains(string(out), "sensor_core") {
+		if found == true {
 			board_found = true
 			PrintlnVerbose("Device found!")
 			break
 		}
-		time.Sleep(1000 * time.Millisecond)
+		time.Sleep(100 * time.Millisecond)
 		counter++
 	}
 
@@ -88,28 +91,7 @@ func main() {
 	}
 
 	dfu_download := []string{dfu, dfu_flags, "-D", bin_file_name, "-v", "--alt", "7", "-R"}
-
-	oscmd := exec.Command(dfu_download[0], dfu_download[1:]...)
-
-	tellCommandNotToSpawnShell(oscmd)
-
-	stdout, _ := oscmd.StdoutPipe()
-
-	stderr, _ := oscmd.StderrPipe()
-
-	multi := io.MultiReader(stderr, stdout)
-
-	err := oscmd.Start()
-
-	in := bufio.NewScanner(multi)
-
-	in.Split(bufio.ScanLines)
-
-	for in.Scan() {
-		PrintlnVerbose(in.Text())
-	}
-
-	err = oscmd.Wait()
+	err, _ := launchCommandAndWaitForOutput(dfu_download, "", true)
 
 	if err == nil {
 		fmt.Println("SUCCESS: Sketch will execute in about 5 seconds.")
@@ -118,4 +100,28 @@ func main() {
 		fmt.Println("ERROR: Upload failed on " + com_port)
 		os.Exit(1)
 	}
+}
+
+func launchCommandAndWaitForOutput(command []string, stringToSearch string, print_output bool) (error, bool) {
+	oscmd := exec.Command(command[0], command[1:]...)
+	tellCommandNotToSpawnShell(oscmd)
+	stdout, _ := oscmd.StdoutPipe()
+	stderr, _ := oscmd.StderrPipe()
+	multi := io.MultiReader(stderr, stdout)
+	err := oscmd.Start()
+	in := bufio.NewScanner(multi)
+	in.Split(bufio.ScanLines)
+	found := false
+	for in.Scan() {
+		if print_output {
+			PrintlnVerbose(in.Text())
+		}
+		if stringToSearch != "" {
+			if strings.Contains(in.Text(), stringToSearch) {
+				found = true
+			}
+		}
+	}
+	err = oscmd.Wait()
+	return err, found
 }
