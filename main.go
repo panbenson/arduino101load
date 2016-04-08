@@ -4,13 +4,12 @@ import (
 	"bufio"
 	"fmt"
 	"io"
-	"io/ioutil"
 	"os"
 	"os/exec"
 	"path/filepath"
+	"github.com/kardianos/osext"
 	"runtime"
 	"strings"
-	"time"
 )
 
 var verbose bool
@@ -24,23 +23,23 @@ func PrintlnVerbose(a ...interface{}) {
 func main() {
 	fmt.Println("Starting download script...")
 
-	// ARG 1: Path to binaries
-	// ARG 2: BIN File to download
-	// ARG 3: TTY port to use.
-	// ARG 4: quiet/verbose
+	// ARG 1: ELF File to download
+	// ARG 2: serialnumber of target device
 	// path may contain \ need to change all to /
 
 	args := os.Args[1:]
 
-	bin_path := args[0]
-	dfu := bin_path + "/dfu-util"
-	dfu = filepath.ToSlash(dfu)
-	dfu_flags := "-d,8087:0ABA"
+	bin_path, err := osext.ExecutableFolder()
+	adb := bin_path + "/adb"
+	adb = filepath.ToSlash(adb)
+	if (len(args) != 3) {
+		fmt.Println("Wrong parameter list")
+		os.Exit(1)
+	}
 
-	bin_file_name := args[1]
-
-	com_port := args[2]
-	verbosity := args[3]
+	bin_file_name := args[0]
+	verbosity := args[1]
+	serialnumber := args[2]
 
 	if verbosity == "quiet" {
 		verbose = false
@@ -49,11 +48,8 @@ func main() {
 	}
 
 	PrintlnVerbose("Args to shell:", args)
-	PrintlnVerbose("Serial Port: " + com_port)
+	PrintlnVerbose("Serial Number: " + serialnumber)
 	PrintlnVerbose("BIN FILE " + bin_file_name)
-
-	counter := 0
-	board_found := false
 
 	if runtime.GOOS == "darwin" {
 		library_path := os.Getenv("DYLD_LIBRARY_PATH")
@@ -62,45 +58,45 @@ func main() {
 		}
 	}
 
-	tmpfile, err := ioutil.TempFile(os.TempDir(), "dfu")
-	dfu_search_command := []string{dfu, dfu_flags, "-U", tmpfile.Name(), "--alt", "4"}
-	tmpfile.Close()
-	os.Remove(tmpfile.Name())
+	adb_search_command := []string{adb, "devices"}
 
-	fmt.Println(dfu_search_command)
+	err, found := launchCommandAndWaitForOutput(adb_search_command, serialnumber, false)
 
-	for counter < 100 && board_found == false {
-		if counter%10 == 0 {
-			PrintlnVerbose("Waiting for device...")
+	if (err == nil && found == false) {
+		err, found = launchCommandAndWaitForOutput(adb_search_command, strings.ToUpper(serialnumber), false)
+		if (found == true) {
+			serialnumber = strings.ToUpper(serialnumber)
 		}
-		err, _ := launchCommandAndWaitForOutput(dfu_search_command, "", false)
-		if counter == 40 {
-			fmt.Println("Flashing is taking longer than expected")
-			fmt.Println("Try pressing MASTER_RESET button")
-		}
-		if err == nil {
-			board_found = true
-			PrintlnVerbose("Device found!")
-			os.Remove(tmpfile.Name())
-			break
-		}
-		time.Sleep(100 * time.Millisecond)
-		counter++
 	}
 
-	if board_found == false {
-		fmt.Println("ERROR: Timed out waiting for Arduino 101 on " + com_port)
+	if (err == nil && found == false) {
+		err, found = launchCommandAndWaitForOutput(adb_search_command, strings.ToLower(serialnumber), false)
+		if (found == true) {
+			serialnumber = strings.ToUpper(serialnumber)
+		}
+	}
+
+	if (err != nil) {
+		fmt.Println("ERROR: Upload failed")
 		os.Exit(1)
 	}
 
-	dfu_download := []string{dfu, dfu_flags, "-D", bin_file_name, "-v", "--alt", "7", "-R"}
-	err, _ = launchCommandAndWaitForOutput(dfu_download, "", true)
+	var serialnumberslice []string
+
+	if (found == true) {
+		serialnumberslice = []string{"-s",  serialnumber}
+	}
+
+	adb_push := []string{adb}
+	adb_push = append(adb_push, serialnumberslice...)
+	adb_push = append(adb_push, "push", bin_file_name, "/tmp/sketch.bin")
+	err, _ = launchCommandAndWaitForOutput(adb_push, "", true)
 
 	if err == nil {
-		fmt.Println("SUCCESS: Sketch will execute in about 5 seconds.")
+		fmt.Println("SUCCESS!")
 		os.Exit(0)
 	} else {
-		fmt.Println("ERROR: Upload failed on " + com_port)
+		fmt.Println("ERROR: Upload failed")
 		os.Exit(1)
 	}
 }
