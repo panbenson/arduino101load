@@ -115,6 +115,8 @@ func main_debug(args []string) {
 		os.Exit(1)
 	}
 
+	verbose = true
+
 	type Command struct {
 		command    string
 		background bool
