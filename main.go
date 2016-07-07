@@ -3,6 +3,7 @@ package main
 import (
 	"bufio"
 	"fmt"
+	"github.com/mattn/go-shellwords"
 	"io"
 	"io/ioutil"
 	"os"
@@ -21,8 +22,7 @@ func PrintlnVerbose(a ...interface{}) {
 	}
 }
 
-func main() {
-	fmt.Println("Starting download script...")
+func main_load(args []string) {
 
 	// ARG 1: Path to binaries
 	// ARG 2: BIN File to download
@@ -30,7 +30,10 @@ func main() {
 	// ARG 4: quiet/verbose
 	// path may contain \ need to change all to /
 
-	args := os.Args[1:]
+	if len(args) < 4 {
+		fmt.Println("Not enough arguments")
+		os.Exit(1)
+	}
 
 	bin_path := args[0]
 	dfu := bin_path + "/dfu-util"
@@ -105,6 +108,69 @@ func main() {
 	}
 }
 
+func main_debug(args []string) {
+
+	if len(args) < 1 {
+		fmt.Println("Not enough arguments")
+		os.Exit(1)
+	}
+
+	type Command struct {
+		command    string
+		background bool
+	}
+
+	var commands []Command
+
+	fullcmdline := strings.Join(args[:], "")
+	temp_commands := strings.Split(fullcmdline, ";")
+	for _, command := range temp_commands {
+		background_commands := strings.Split(command, "&")
+		for i, command := range background_commands {
+			var cmd Command
+			cmd.background = (i < len(background_commands)-1)
+			cmd.command = command
+			commands = append(commands, cmd)
+		}
+	}
+
+	var err error
+
+	for _, command := range commands {
+		fmt.Println("command: " + command.command)
+		cmd, _ := shellwords.Parse(command.command)
+		fmt.Println(cmd)
+		if command.background == false {
+			err, _ = launchCommandAndWaitForOutput(cmd, "", true)
+		} else {
+			err, _ = launchCommandBackground(cmd, "", true)
+		}
+		if err != nil {
+			fmt.Println("ERROR: Command \" " + command.command + " \" failed")
+			os.Exit(1)
+		}
+	}
+	os.Exit(0)
+}
+
+func main() {
+	name := os.Args[0]
+	args := os.Args[1:]
+
+	if strings.Contains(name, "load") {
+		fmt.Println("Starting download script...")
+		main_load(args)
+	}
+
+	if strings.Contains(name, "debug") {
+		fmt.Println("Starting debug script...")
+		main_debug(args)
+	}
+
+	fmt.Println("Wrong executable name")
+	os.Exit(1)
+}
+
 func launchCommandAndWaitForOutput(command []string, stringToSearch string, print_output bool) (error, bool) {
 	oscmd := exec.Command(command[0], command[1:]...)
 	tellCommandNotToSpawnShell(oscmd)
@@ -127,4 +193,11 @@ func launchCommandAndWaitForOutput(command []string, stringToSearch string, prin
 	}
 	err = oscmd.Wait()
 	return err, found
+}
+
+func launchCommandBackground(command []string, stringToSearch string, print_output bool) (error, bool) {
+	oscmd := exec.Command(command[0], command[1:]...)
+	tellCommandNotToSpawnShell(oscmd)
+	err := oscmd.Start()
+	return err, false
 }
