@@ -3,11 +3,11 @@ package main
 import (
 	"bufio"
 	"fmt"
+	"github.com/kardianos/osext"
 	"io"
 	"os"
 	"os/exec"
 	"path/filepath"
-	"github.com/kardianos/osext"
 	"runtime"
 	"strings"
 )
@@ -32,7 +32,7 @@ func main() {
 	bin_path, err := osext.ExecutableFolder()
 	adb := bin_path + "/adb"
 	adb = filepath.ToSlash(adb)
-	if (len(args) != 3) {
+	if len(args) != 3 {
 		fmt.Println("Wrong parameter list")
 		os.Exit(1)
 	}
@@ -62,29 +62,29 @@ func main() {
 
 	err, found := launchCommandAndWaitForOutput(adb_search_command, serialnumber, false)
 
-	if (err == nil && found == false) {
+	if err == nil && found == false {
 		err, found = launchCommandAndWaitForOutput(adb_search_command, strings.ToUpper(serialnumber), false)
-		if (found == true) {
+		if found == true {
 			serialnumber = strings.ToUpper(serialnumber)
 		}
 	}
 
-	if (err == nil && found == false) {
+	if err == nil && found == false {
 		err, found = launchCommandAndWaitForOutput(adb_search_command, strings.ToLower(serialnumber), false)
-		if (found == true) {
-			serialnumber = strings.ToUpper(serialnumber)
+		if found == true {
+			serialnumber = strings.ToLower(serialnumber)
 		}
 	}
 
-	if (err != nil) {
+	if err != nil {
 		fmt.Println("ERROR: Upload failed")
 		os.Exit(1)
 	}
 
 	var serialnumberslice []string
 
-	if (found == true) {
-		serialnumberslice = []string{"-s",  serialnumber}
+	if found == true {
+		serialnumberslice = []string{"-s", serialnumber}
 	}
 
 	adb_push := []string{adb}
