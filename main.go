@@ -8,6 +8,7 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
+	"regexp"
 	"runtime"
 	"strings"
 	"time"
@@ -44,6 +45,12 @@ func main_load(args []string) {
 	com_port := args[2]
 	verbosity := args[3]
 
+	ble_compliance := ""
+	if len(args) >= 5 {
+		// Called by post 1.0.6 platform.txt
+		ble_compliance = args[4]
+	}
+
 	if verbosity == "quiet" {
 		verbose = false
 	} else {
@@ -66,11 +73,14 @@ func main_load(args []string) {
 
 	dfu_search_command := []string{dfu, dfu_flags, "-l"}
 
+	var cmd_output string
+
 	for counter < 100 && board_found == false {
 		if counter%10 == 0 {
 			PrintlnVerbose("Waiting for device...")
 		}
-		err, found := launchCommandAndWaitForOutput(dfu_search_command, "sensor_core", false)
+		err, found, output := launchCommandAndWaitForOutput(dfu_search_command, "sensor_core", false)
+		cmd_output = output
 		if err != nil {
 			fmt.Println(err)
 			os.Exit(1)
@@ -93,8 +103,18 @@ func main_load(args []string) {
 		os.Exit(1)
 	}
 
+	if ble_compliance != "" {
+		// check for BLE library compliance
+		ble_version := extractBLEversionFromDFU(cmd_output)
+		if ble_compliance != ble_version {
+			fmt.Println("BLE firmware version is not in sync with CurieBLE library")
+			fmt.Println("Update it using \"Burn Bootloader\" menu")
+			os.Exit(1)
+		}
+	}
+
 	dfu_download := []string{dfu, dfu_flags, "-D", bin_file_name, "-v", "--alt", "7", "-R"}
-	err, _ := launchCommandAndWaitForOutput(dfu_download, "", true)
+	err, _, _ := launchCommandAndWaitForOutput(dfu_download, "", true)
 
 	if err == nil {
 		fmt.Println("SUCCESS: Sketch will execute in about 5 seconds.")
@@ -140,7 +160,7 @@ func main_debug(args []string) {
 		cmd, _ := shellwords.Parse(command.command)
 		fmt.Println(cmd)
 		if command.background == false {
-			err, _ = launchCommandAndWaitForOutput(cmd, "", true)
+			err, _, _ = launchCommandAndWaitForOutput(cmd, "", true)
 		} else {
 			err, _ = launchCommandBackground(cmd, "", true)
 		}
@@ -170,7 +190,24 @@ func main() {
 	os.Exit(1)
 }
 
-func launchCommandAndWaitForOutput(command []string, stringToSearch string, print_output bool) (error, bool) {
+func extractBLEversionFromDFU(command string) string {
+	in := bufio.NewScanner(strings.NewReader(command))
+	in.Split(bufio.ScanLines)
+	for in.Scan() {
+		if strings.Contains(in.Text(), "ble_core") {
+			re := regexp.MustCompile(`ver=([0-9]+)`)
+			ver := re.FindStringSubmatch(in.Text())
+			if len(ver) > 1 {
+				return ver[1]
+			} else {
+				return ""
+			}
+		}
+	}
+	return ""
+}
+
+func launchCommandAndWaitForOutput(command []string, stringToSearch string, print_output bool) (error, bool, string) {
 	oscmd := exec.Command(command[0], command[1:]...)
 	tellCommandNotToSpawnShell(oscmd)
 	stdout, _ := oscmd.StdoutPipe()
@@ -180,10 +217,12 @@ func launchCommandAndWaitForOutput(command []string, stringToSearch string, prin
 	in := bufio.NewScanner(multi)
 	in.Split(bufio.ScanLines)
 	found := false
+	out := ""
 	for in.Scan() {
 		if print_output {
 			PrintlnVerbose(in.Text())
 		}
+		out += in.Text() + "\n"
 		if stringToSearch != "" {
 			if strings.Contains(in.Text(), stringToSearch) {
 				found = true
@@ -191,7 +230,7 @@ func launchCommandAndWaitForOutput(command []string, stringToSearch string, prin
 		}
 	}
 	err = oscmd.Wait()
-	return err, found
+	return err, found, out
 }
 
 func launchCommandBackground(command []string, stringToSearch string, print_output bool) (error, bool) {
