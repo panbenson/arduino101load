@@ -5,7 +5,6 @@ import (
 	"fmt"
 	"github.com/mattn/go-shellwords"
 	"io"
-	"io/ioutil"
 	"os"
 	"os/exec"
 	"path/filepath"
@@ -65,26 +64,24 @@ func main_load(args []string) {
 		}
 	}
 
-	tmpfile, err := ioutil.TempFile(os.TempDir(), "dfu")
-	dfu_search_command := []string{dfu, dfu_flags, "-U", tmpfile.Name(), "--alt", "4"}
-	tmpfile.Close()
-	os.Remove(tmpfile.Name())
-
-	fmt.Println(dfu_search_command)
+	dfu_search_command := []string{dfu, dfu_flags, "-l"}
 
 	for counter < 100 && board_found == false {
 		if counter%10 == 0 {
 			PrintlnVerbose("Waiting for device...")
 		}
-		err, _ := launchCommandAndWaitForOutput(dfu_search_command, "", false)
+		err, found := launchCommandAndWaitForOutput(dfu_search_command, "sensor_core", false)
+		if err != nil {
+			fmt.Println(err)
+			os.Exit(1)
+		}
 		if counter == 40 {
 			fmt.Println("Flashing is taking longer than expected")
 			fmt.Println("Try pressing MASTER_RESET button")
 		}
-		if err == nil {
+		if found == true {
 			board_found = true
 			PrintlnVerbose("Device found!")
-			os.Remove(tmpfile.Name())
 			break
 		}
 		time.Sleep(100 * time.Millisecond)
@@ -97,7 +94,7 @@ func main_load(args []string) {
 	}
 
 	dfu_download := []string{dfu, dfu_flags, "-D", bin_file_name, "-v", "--alt", "7", "-R"}
-	err, _ = launchCommandAndWaitForOutput(dfu_download, "", true)
+	err, _ := launchCommandAndWaitForOutput(dfu_download, "", true)
 
 	if err == nil {
 		fmt.Println("SUCCESS: Sketch will execute in about 5 seconds.")
