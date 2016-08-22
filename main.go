@@ -5,10 +5,10 @@ import (
 	"fmt"
 	"github.com/mattn/go-shellwords"
 	"io"
+	"io/ioutil"
 	"os"
 	"os/exec"
 	"path/filepath"
-	"regexp"
 	"runtime"
 	"strings"
 	"time"
@@ -45,10 +45,12 @@ func main_load(args []string) {
 	com_port := args[2]
 	verbosity := args[3]
 
-	ble_compliance := ""
+	ble_compliance_string := ""
+	ble_compliance_offset := ""
 	if len(args) >= 5 {
 		// Called by post 1.0.6 platform.txt
-		ble_compliance = args[4]
+		ble_compliance_string = args[4]
+		ble_compliance_offset = args[5]
 	}
 
 	if verbosity == "quiet" {
@@ -73,14 +75,11 @@ func main_load(args []string) {
 
 	dfu_search_command := []string{dfu, dfu_flags, "-l"}
 
-	var cmd_output string
-
 	for counter < 100 && board_found == false {
 		if counter%10 == 0 {
 			PrintlnVerbose("Waiting for device...")
 		}
-		err, found, output := launchCommandAndWaitForOutput(dfu_search_command, "sensor_core", false)
-		cmd_output = output
+		err, found, _ := launchCommandAndWaitForOutput(dfu_search_command, "sensor_core", false)
 		if err != nil {
 			fmt.Println(err)
 			os.Exit(1)
@@ -103,14 +102,45 @@ func main_load(args []string) {
 		os.Exit(1)
 	}
 
-	if ble_compliance != "" {
+	if ble_compliance_string != "" {
+
+		// obtain a temporary filename
+		tmpfile, _ := ioutil.TempFile(os.TempDir(), "dfu")
+		tmpfile.Close()
+		os.Remove(tmpfile.Name())
+
+		// reset DFU interface counter
+		dfu_reset_command := []string{dfu, dfu_flags, "-U", tmpfile.Name(), "--alt", "8", "-K", "1"}
+
+		err, _, _ := launchCommandAndWaitForOutput(dfu_reset_command, "", false)
+		if err != nil {
+			fmt.Println(err)
+			os.Exit(1)
+		}
+
+		os.Remove(tmpfile.Name())
+
+		// download a piece of BLE firmware
+		dfu_ble_dump_command := []string{dfu, dfu_flags, "-U", tmpfile.Name(), "--alt", "8", "-K", ble_compliance_offset}
+
+		err, _, _ = launchCommandAndWaitForOutput(dfu_ble_dump_command, "", false)
+		if err != nil {
+			fmt.Println(err)
+			os.Exit(1)
+		}
+
 		// check for BLE library compliance
-		ble_version := extractBLEversionFromDFU(cmd_output)
-		if ble_compliance != ble_version {
+		found := searchBLEversionInDFU(tmpfile.Name(), ble_compliance_string)
+
+		// remove the temporary file
+		os.Remove(tmpfile.Name())
+
+		if !found {
 			fmt.Println("BLE firmware version is not in sync with CurieBLE library")
 			fmt.Println("Update it using \"Burn Bootloader\" menu")
 			os.Exit(1)
 		}
+
 	}
 
 	dfu_download := []string{dfu, dfu_flags, "-D", bin_file_name, "-v", "--alt", "7", "-R"}
@@ -190,21 +220,9 @@ func main() {
 	os.Exit(1)
 }
 
-func extractBLEversionFromDFU(command string) string {
-	in := bufio.NewScanner(strings.NewReader(command))
-	in.Split(bufio.ScanLines)
-	for in.Scan() {
-		if strings.Contains(in.Text(), "ble_core") {
-			re := regexp.MustCompile(`ver=([0-9]+)`)
-			ver := re.FindStringSubmatch(in.Text())
-			if len(ver) > 1 {
-				return ver[1]
-			} else {
-				return ""
-			}
-		}
-	}
-	return ""
+func searchBLEversionInDFU(file string, string_to_search string) bool {
+	read, _ := ioutil.ReadFile(file)
+	return strings.Contains(string(read), string_to_search)
 }
 
 func launchCommandAndWaitForOutput(command []string, stringToSearch string, print_output bool) (error, bool, string) {
