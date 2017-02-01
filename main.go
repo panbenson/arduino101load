@@ -2,14 +2,18 @@ package main
 
 import (
 	"bufio"
+	"errors"
 	"fmt"
+	"github.com/facchinm/go-serial"
+	"github.com/kardianos/osext"
 	"github.com/mattn/go-shellwords"
 	"io"
 	"io/ioutil"
+	"log"
 	"os"
 	"os/exec"
-	"path/filepath"
-	"runtime"
+	_ "path/filepath"
+	_ "runtime"
 	"strings"
 	"time"
 )
@@ -22,6 +26,81 @@ func PrintlnVerbose(a ...interface{}) {
 	}
 }
 
+func touch_port_1200bps(portname string, WaitForUploadPort bool) (string, error) {
+	initialPortName := portname
+	log.Println("Restarting in bootloader mode")
+
+	before_reset_ports, _ := serial.GetPortsList()
+	log.Println(before_reset_ports)
+
+	var ports []string
+
+	mode := &serial.Mode{
+		BaudRate: 1200,
+		Vmin:     0,
+		Vtimeout: 1,
+	}
+	port, err := serial.OpenPort(portname, mode)
+	if err != nil {
+		log.Println(err)
+		return "", err
+	}
+	err = port.SetDTR(false)
+	if err != nil {
+		log.Println(err)
+	}
+	port.Close()
+
+	timeout := false
+	go func() {
+		time.Sleep(10 * time.Second)
+		timeout = true
+	}()
+
+	// wait for port to disappear
+	if WaitForUploadPort {
+		for {
+			ports, _ = serial.GetPortsList()
+			log.Println(ports)
+			portname = findNewPortName(ports, before_reset_ports)
+			if portname != "" {
+				break
+			}
+			if timeout {
+				break
+			}
+			time.Sleep(time.Millisecond * 100)
+		}
+	}
+
+	// wait for port to reappear
+	if WaitForUploadPort {
+		after_reset_ports, _ := serial.GetPortsList()
+		log.Println(after_reset_ports)
+		for {
+			ports, _ = serial.GetPortsList()
+			log.Println(ports)
+			portname = findNewPortName(ports, after_reset_ports)
+			if portname != "" {
+				time.Sleep(time.Millisecond * 500)
+				break
+			}
+			if timeout {
+				break
+			}
+			time.Sleep(time.Millisecond * 100)
+		}
+	}
+
+	if portname == "" {
+		portname = initialPortName
+		err = errors.New("no new port found")
+	} else {
+		err = nil
+	}
+	return portname, err
+}
+
 func main_load(args []string) {
 
 	// ARG 1: Path to binaries
@@ -30,131 +109,54 @@ func main_load(args []string) {
 	// ARG 4: quiet/verbose
 	// path may contain \ need to change all to /
 
-	if len(args) < 4 {
-		fmt.Println("Not enough arguments")
-		os.Exit(1)
-	}
+	uploadPort := ""
+	sketchName := "MKR3000Test.bin"
+	var ok error
 
-	bin_path := args[0]
-	dfu := bin_path + "/dfu-util"
-	dfu = filepath.ToSlash(dfu)
-	dfu_flags := "-d,8087:0ABA"
+	before_reset_ports, _ := serial.GetPortsList()
 
-	bin_file_name := args[1]
-
-	com_port := args[2]
-	verbosity := args[3]
-
-	ble_compliance_string := ""
-	ble_compliance_offset := ""
-	if len(args) >= 5 {
-		// Called by post 1.0.6 platform.txt
-		ble_compliance_string = args[4]
-		ble_compliance_offset = args[5]
-	}
-
-	if verbosity == "quiet" {
-		verbose = false
-	} else {
-		verbose = true
-	}
-
-	PrintlnVerbose("Args to shell:", args)
-	PrintlnVerbose("Serial Port: " + com_port)
-	PrintlnVerbose("BIN FILE " + bin_file_name)
-
-	counter := 0
-	board_found := false
-
-	if runtime.GOOS == "darwin" {
-		library_path := os.Getenv("DYLD_LIBRARY_PATH")
-		if !strings.Contains(library_path, bin_path) {
-			os.Setenv("DYLD_LIBRARY_PATH", bin_path+":"+library_path)
-		}
-	}
-
-	dfu_search_command := []string{dfu, dfu_flags, "-l"}
-
-	for counter < 100 && board_found == false {
-		if counter%10 == 0 {
-			PrintlnVerbose("Waiting for device...")
-		}
-		err, found, _ := launchCommandAndWaitForOutput(dfu_search_command, "sensor_core", false)
-		if err != nil {
-			fmt.Println(err)
-			os.Exit(1)
-		}
-		if counter == 40 {
-			fmt.Println("Flashing is taking longer than expected")
-			fmt.Println("Try pressing MASTER_RESET button")
-		}
-		if found == true {
-			board_found = true
-			PrintlnVerbose("Device found!")
+	for _, port := range before_reset_ports {
+		uploadPort, ok = touch_port_1200bps(port, true)
+		if ok == nil {
 			break
 		}
-		time.Sleep(100 * time.Millisecond)
-		counter++
 	}
 
-	if board_found == false {
-		fmt.Println("ERROR: Timed out waiting for Arduino 101 on " + com_port)
-		os.Exit(1)
-	}
+	folderPath, _ := osext.ExecutableFolder()
 
-	if ble_compliance_string != "" {
+	uploadPort = strings.Replace(uploadPort, "/dev/", "", -1)
 
-		// obtain a temporary filename
-		tmpfile, _ := ioutil.TempFile(os.TempDir(), "dfu")
-		tmpfile.Close()
-		os.Remove(tmpfile.Name())
+	dfu_download := []string{folderPath + "/bossac", "-i", "-d", "--port=" + uploadPort, "-U", "true", "-i", "-e", "-w", "-v", folderPath + "/" + sketchName, "-R"}
+	err, _, out := launchCommandAndWaitForOutput(dfu_download, "", true)
 
-		// reset DFU interface counter
-		dfu_reset_command := []string{dfu, dfu_flags, "-U", tmpfile.Name(), "--alt", "8", "-K", "1"}
-
-		err, _, _ := launchCommandAndWaitForOutput(dfu_reset_command, "", false)
-		if err != nil {
-			fmt.Println(err)
-			os.Exit(1)
-		}
-
-		os.Remove(tmpfile.Name())
-
-		// download a piece of BLE firmware
-		dfu_ble_dump_command := []string{dfu, dfu_flags, "-U", tmpfile.Name(), "--alt", "8", "-K", ble_compliance_offset}
-
-		err, _, _ = launchCommandAndWaitForOutput(dfu_ble_dump_command, "", false)
-		if err != nil {
-			fmt.Println(err)
-			os.Exit(1)
-		}
-
-		// check for BLE library compliance
-		PrintlnVerbose("Verifying BLE version:", ble_compliance_string)
-		found := searchBLEversionInDFU(tmpfile.Name(), ble_compliance_string)
-
-		// remove the temporary file
-		os.Remove(tmpfile.Name())
-
-		if !found {
-			fmt.Println("!! BLE firmware version is not in sync with CurieBLE library !!")
-			fmt.Println("* Set Programmer to \"Arduino/Genuino 101 Firmware Updater\"")
-			fmt.Println("* Update it using \"Burn Bootloader\" menu")
-			os.Exit(1)
-		}
-		PrintlnVerbose("BLE version: verified")
-	}
-
-	dfu_download := []string{dfu, dfu_flags, "-D", bin_file_name, "-v", "--alt", "7", "-R"}
-	err, _, _ := launchCommandAndWaitForOutput(dfu_download, "", true)
+	fmt.Println(out)
 
 	if err == nil {
 		fmt.Println("SUCCESS: Sketch will execute in about 5 seconds.")
 		os.Exit(0)
 	} else {
-		fmt.Println("ERROR: Upload failed on " + com_port)
+		fmt.Println("ERROR: Upload failed on " + uploadPort)
 		os.Exit(1)
 	}
+}
+
+func findNewPortName(slice1 []string, slice2 []string) string {
+	m := map[string]int{}
+
+	for _, s1Val := range slice1 {
+		m[s1Val] = 1
+	}
+	for _, s2Val := range slice2 {
+		m[s2Val] = m[s2Val] + 1
+	}
+
+	for mKey, mVal := range m {
+		if mVal == 1 {
+			return mKey
+		}
+	}
+
+	return ""
 }
 
 func main_debug(args []string) {
