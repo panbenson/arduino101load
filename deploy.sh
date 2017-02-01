@@ -15,11 +15,14 @@ package_index=`cat package_index.template | sed s/%%VERSION%%/${VERSION}/`
 
 for folder in "${target_folders[@]}"
 do
-   rm arduino101load*
+   rm -rf arduino101load*
+   rm -rf bin
+   mkdir bin
    IFS=_ read -a fields <<< $folder
    GOOS=${fields[0]} GOARCH=${fields[1]} go build
    FILENAME=arduino101load-${VERSION}-${folder}.tar.bz2
-   tar cjvf ${FILENAME} arduino101load* firmwares/
+   cp -r  arduino101load* firmwares/ bin
+   tar cjvf ${FILENAME} bin/
    T_OS=`echo ${folder} | awk '{print toupper($0)}'`
    SHASUM=`sha256sum ${FILENAME} | cut -f1 -d" "`
    SIZE=`stat --printf="%s" ${FILENAME}`
