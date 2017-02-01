@@ -11,7 +11,7 @@ declare -a target_folders=("linux_amd64" "linux_386" "linux_arm" "darwin_amd64" 
 rm -rf distrib
 mkdir distrib
 
-package_index=`cat package_index.template | sed s/%%VERSION%%/${OUTPUT_VERSION}/`
+package_index=`cat package_index.template | sed s/%%VERSION%%/${VERSION}/`
 
 for folder in "${target_folders[@]}"
 do
