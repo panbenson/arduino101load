@@ -26,7 +26,7 @@ var (
 	com_port               = flag.String("port", "", "Upload serial port")
 	ble_compliance_string  = flag.String("ble_fw_str", "", "BLE FW ID string")
 	ble_compliance_offset  = flag.Int("ble_fw_pos", 0, "BLE FW ID offset")
-	rtos_compliance_string = flag.String("rots_fw_str", "", "RTOS FW ID string")
+	rtos_compliance_string = flag.String("rtos_fw_str", "", "RTOS FW ID string")
 	rtos_compliance_offset = flag.Int("rtos_fw_pos", 0, "RTOS FW ID offset")
 )
 
