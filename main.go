@@ -54,6 +54,12 @@ func main_load() {
 		os.Exit(1)
 	}
 
+	// Remove ""s from the strings
+	*dfu_path = strings.Replace(*dfu_path, "\"", "", -1)
+	*bin_file_name = strings.Replace(*bin_file_name, "\"", "", -1)
+	*ble_compliance_string = strings.Replace(*ble_compliance_string, "\"", "", -1)
+	*rtos_compliance_string = strings.Replace(*rtos_compliance_string, "\"", "", -1)
+
 	dfu := *dfu_path + "/dfu-util"
 	dfu = filepath.ToSlash(dfu)
 
