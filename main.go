@@ -313,6 +313,8 @@ func main() {
 			fmt.Println("ERROR: need -from and -to arguments")
 			os.Exit(1)
 		}
+		*from = strings.Replace(*from, "\"", "", -1)
+		*to = strings.Replace(*to, "\"", "", -1)
 		copy(*from, *to)
 		os.Exit(0)
 	}
