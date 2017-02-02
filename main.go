@@ -22,6 +22,7 @@ var (
 	quiet                  = flag.Bool("q", true, "Show quiet logging")
 	force                  = flag.Bool("f", false, "Force firmware update")
 	copier                 = flag.Bool("c", false, "Copy bin_file to bin_save")
+	core                   = flag.String("core", "", "Core version")
 	from                   = flag.String("from", "", "Original file location")
 	to                     = flag.String("to", "", "Save file location")
 	dfu_path               = flag.String("dfu", "", "Location of dfu-util binaries")
@@ -195,7 +196,7 @@ func main_load() {
 	}
 
 	executablePath, _ := osext.ExecutableFolder()
-	firmwarePath := executablePath + "/firmwares/"
+	firmwarePath := executablePath + "/firmwares/" + *core + "/"
 
 	// Save verbose flag
 	verbose_user := *verbose
