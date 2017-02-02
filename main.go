@@ -21,6 +21,9 @@ var (
 	verbose                = flag.Bool("v", false, "Show verbose logging")
 	quiet                  = flag.Bool("q", true, "Show quiet logging")
 	force                  = flag.Bool("f", false, "Force firmware update")
+	copier                 = flag.Bool("c", false, "Copy bin_file to bin_save")
+	from                   = flag.String("from", "", "Original file location")
+	to                     = flag.String("to", "", "Save file location")
 	dfu_path               = flag.String("dfu", "", "Location of dfu-util binaries")
 	bin_file_name          = flag.String("bin", "", "Location of sketch binary")
 	com_port               = flag.String("port", "", "Upload serial port")
@@ -304,6 +307,15 @@ func main() {
 
 	PrintlnVerbose(name + " " + Version + " - compiled with " + runtime.Version())
 
+	if *copier {
+		if *from == "" || *to == "" {
+			fmt.Println("ERROR: need -from and -to arguments")
+			os.Exit(1)
+		}
+		copy(*from, *to)
+		os.Exit(0)
+	}
+
 	if strings.Contains(name, "load") {
 		fmt.Println("Starting download script...")
 		main_load()
@@ -316,6 +328,36 @@ func main() {
 
 	fmt.Println("Wrong executable name")
 	os.Exit(1)
+}
+
+// Copy a file
+func copy(source, destination string) {
+	// Open original file
+	originalFile, err := os.Open(source)
+	if err != nil {
+		os.Exit(1)
+	}
+	defer originalFile.Close()
+
+	// Create new file
+	newFile, err := os.Create(destination)
+	if err != nil {
+		os.Exit(1)
+	}
+	defer newFile.Close()
+
+	// Copy the bytes to destination from source
+	_, err = io.Copy(newFile, originalFile)
+	if err != nil {
+		os.Exit(1)
+	}
+
+	// Commit the file contents
+	// Flushes memory to disk
+	err = newFile.Sync()
+	if err != nil {
+		os.Exit(1)
+	}
 }
 
 func searchVersionInDFU(file string, string_to_search string) bool {
