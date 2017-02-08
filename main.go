@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"github.com/kardianos/osext"
 	"github.com/mattn/go-shellwords"
+	"github.com/tj/go-spin"
 	"io"
 	"io/ioutil"
 	"os"
@@ -43,6 +44,12 @@ const ble_firmware = "ble_core.bin"
 func PrintlnVerbose(a ...interface{}) {
 	if *verbose {
 		fmt.Println(a...)
+	}
+}
+
+func PrintVerbose(a ...interface{}) {
+	if *verbose {
+		fmt.Print(a...)
 	}
 }
 
@@ -198,12 +205,8 @@ func main_load() {
 	executablePath, _ := osext.ExecutableFolder()
 	firmwarePath := executablePath + "/firmwares/" + *core + "/"
 
-	// Save verbose flag
-	verbose_user := *verbose
-
 	if needUpdateBLE || *force == true {
 
-		*verbose = true
 		// flash current BLE firmware to partition 8
 		dfu_ble_flash_command := []string{dfu, dfu_flags, "-D", firmwarePath + ble_firmware, "--alt", "8"}
 
@@ -219,7 +222,6 @@ func main_load() {
 
 	if needUpdateRTOS || *force == true {
 
-		*verbose = true
 		// flash current RTOS firmware to partition 2
 		dfu_rtos_flash_command := []string{dfu, dfu_flags, "-D", firmwarePath + rtos_firmware, "--alt", "2"}
 
@@ -232,9 +234,6 @@ func main_load() {
 			os.Exit(1)
 		}
 	}
-
-	// Restore verbose flag
-	*verbose = verbose_user
 
 	// Finally flash the sketch
 
@@ -373,24 +372,42 @@ func launchCommandAndWaitForOutput(command []string, stringToSearch string, prin
 	tellCommandNotToSpawnShell(oscmd)
 	stdout, _ := oscmd.StdoutPipe()
 	stderr, _ := oscmd.StderrPipe()
-	multi := io.MultiReader(stderr, stdout)
+	multi := io.MultiReader(stdout, stderr)
+
+	s := spin.New()
+	s.Set(spin.Spin1)
+	showSpinner := false
+
+	if print_output {
+		if *verbose {
+			oscmd.Stdout = os.Stdout
+			oscmd.Stderr = os.Stderr
+		} else {
+			showSpinner = true
+		}
+	}
 	err := oscmd.Start()
 	in := bufio.NewScanner(multi)
-	in.Split(bufio.ScanLines)
+	in.Split(bufio.ScanRunes)
 	found := false
 	out := ""
 	for in.Scan() {
-		if print_output {
-			PrintlnVerbose(in.Text())
+
+		if showSpinner {
+			fmt.Printf("\r %s", s.Next())
 		}
-		out += in.Text() + "\n"
+
+		out += in.Text()
 		if stringToSearch != "" {
-			if strings.Contains(in.Text(), stringToSearch) {
+			if strings.Contains(out, stringToSearch) {
 				found = true
 			}
 		}
 	}
 	err = oscmd.Wait()
+	if showSpinner {
+		fmt.Println("")
+	}
 	return err, found, out
 }
 
