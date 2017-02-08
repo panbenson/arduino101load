@@ -94,7 +94,7 @@ func main_load() {
 		if counter%10 == 0 {
 			PrintlnVerbose("Waiting for device...")
 		}
-		err, found, _ := launchCommandAndWaitForOutput(dfu_search_command, "sensor_core", false)
+		err, found, _ := launchCommandAndWaitForOutput(dfu_search_command, "sensor_core", false, false)
 		if err != nil {
 			fmt.Println(err)
 			os.Exit(1)
@@ -130,7 +130,7 @@ func main_load() {
 		// reset DFU interface counter
 		dfu_reset_command := []string{dfu, dfu_flags, "-U", tmpfile.Name(), "--alt", "8", "-K", "1"}
 
-		err, _, _ := launchCommandAndWaitForOutput(dfu_reset_command, "", false)
+		err, _, _ := launchCommandAndWaitForOutput(dfu_reset_command, "", false, false)
 		if err != nil {
 			fmt.Println(err)
 			os.Exit(1)
@@ -141,7 +141,7 @@ func main_load() {
 		// download a piece of BLE firmware
 		dfu_ble_dump_command := []string{dfu, dfu_flags, "-U", tmpfile.Name(), "--alt", "8", "-K", strconv.Itoa(*ble_compliance_offset)}
 
-		err, _, _ = launchCommandAndWaitForOutput(dfu_ble_dump_command, "", false)
+		err, _, _ = launchCommandAndWaitForOutput(dfu_ble_dump_command, "", false, false)
 		if err != nil {
 			fmt.Println(err)
 			os.Exit(1)
@@ -171,7 +171,7 @@ func main_load() {
 		// reset DFU interface counter
 		dfu_reset_command := []string{dfu, dfu_flags, "-U", tmpfile.Name(), "--alt", "2", "-K", "1"}
 
-		err, _, _ := launchCommandAndWaitForOutput(dfu_reset_command, "", false)
+		err, _, _ := launchCommandAndWaitForOutput(dfu_reset_command, "", false, false)
 		if err != nil {
 			fmt.Println(err)
 			os.Exit(1)
@@ -182,7 +182,7 @@ func main_load() {
 		// download a piece of RTOS firmware
 		dfu_rtos_dump_command := []string{dfu, dfu_flags, "-U", tmpfile.Name(), "--alt", "2", "-K", strconv.Itoa(*rtos_compliance_offset)}
 
-		err, _, _ = launchCommandAndWaitForOutput(dfu_rtos_dump_command, "", false)
+		err, _, _ = launchCommandAndWaitForOutput(dfu_rtos_dump_command, "", false, false)
 		if err != nil {
 			fmt.Println(err)
 			os.Exit(1)
@@ -213,7 +213,7 @@ func main_load() {
 		fmt.Println("ATTENTION: BLE firmware is being flashed")
 		fmt.Println("DO NOT DISCONNECT THE BOARD")
 
-		err, _, _ = launchCommandAndWaitForOutput(dfu_ble_flash_command, "", true)
+		err, _, _ = launchCommandAndWaitForOutput(dfu_ble_flash_command, "", true, true)
 		if err != nil {
 			fmt.Println(err)
 			os.Exit(1)
@@ -228,7 +228,7 @@ func main_load() {
 		fmt.Println("ATTENTION: RTOS firmware is being flashed")
 		fmt.Println("DO NOT DISCONNECT THE BOARD")
 
-		err, _, _ = launchCommandAndWaitForOutput(dfu_rtos_flash_command, "", true)
+		err, _, _ = launchCommandAndWaitForOutput(dfu_rtos_flash_command, "", true, true)
 		if err != nil {
 			fmt.Println(err)
 			os.Exit(1)
@@ -242,7 +242,7 @@ func main_load() {
 	}
 
 	dfu_download := []string{dfu, dfu_flags, "-D", *bin_file_name, "-v", "--alt", "7", "-R"}
-	err, _, _ = launchCommandAndWaitForOutput(dfu_download, "", true)
+	err, _, _ = launchCommandAndWaitForOutput(dfu_download, "", true, false)
 
 	if err == nil {
 		fmt.Println("SUCCESS: Sketch will execute in about 5 seconds.")
@@ -288,7 +288,7 @@ func main_debug(args []string) {
 		cmd, _ := shellwords.Parse(command.command)
 		fmt.Println(cmd)
 		if command.background == false {
-			err, _, _ = launchCommandAndWaitForOutput(cmd, "", true)
+			err, _, _ = launchCommandAndWaitForOutput(cmd, "", true, false)
 		} else {
 			err, _ = launchCommandBackground(cmd, "", true)
 		}
@@ -367,7 +367,7 @@ func searchVersionInDFU(file string, string_to_search string) bool {
 	return strings.Contains(string(read), string_to_search)
 }
 
-func launchCommandAndWaitForOutput(command []string, stringToSearch string, print_output bool) (error, bool, string) {
+func launchCommandAndWaitForOutput(command []string, stringToSearch string, print_output bool, show_spinner bool) (error, bool, string) {
 	oscmd := exec.Command(command[0], command[1:]...)
 	tellCommandNotToSpawnShell(oscmd)
 	stdout, _ := oscmd.StdoutPipe()
@@ -376,15 +376,10 @@ func launchCommandAndWaitForOutput(command []string, stringToSearch string, prin
 
 	s := spin.New()
 	s.Set(spin.Spin1)
-	showSpinner := false
 
-	if print_output {
-		if *verbose {
-			oscmd.Stdout = os.Stdout
-			oscmd.Stderr = os.Stderr
-		} else {
-			showSpinner = true
-		}
+	if print_output && *verbose {
+		oscmd.Stdout = os.Stdout
+		oscmd.Stderr = os.Stderr
 	}
 	err := oscmd.Start()
 	in := bufio.NewScanner(multi)
@@ -393,7 +388,7 @@ func launchCommandAndWaitForOutput(command []string, stringToSearch string, prin
 	out := ""
 	for in.Scan() {
 
-		if showSpinner {
+		if show_spinner {
 			fmt.Printf("\r %s", s.Next())
 		}
 
@@ -405,7 +400,7 @@ func launchCommandAndWaitForOutput(command []string, stringToSearch string, prin
 		}
 	}
 	err = oscmd.Wait()
-	if showSpinner {
+	if show_spinner {
 		fmt.Println("")
 	}
 	return err, found, out
