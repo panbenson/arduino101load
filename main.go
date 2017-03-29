@@ -4,9 +4,6 @@ import (
 	"bufio"
 	"flag"
 	"fmt"
-	"github.com/kardianos/osext"
-	"github.com/mattn/go-shellwords"
-	"github.com/tj/go-spin"
 	"io"
 	"io/ioutil"
 	"os"
@@ -16,6 +13,9 @@ import (
 	"strconv"
 	"strings"
 	"time"
+
+	"github.com/kardianos/osext"
+	"github.com/mattn/go-shellwords"
 )
 
 var (
@@ -238,6 +238,7 @@ func main_load() {
 	// Finally flash the sketch
 
 	if *bin_file_name == "" {
+		fmt.Println("SUCCESS: Upload completed")
 		os.Exit(0)
 	}
 
@@ -374,9 +375,6 @@ func launchCommandAndWaitForOutput(command []string, stringToSearch string, prin
 	stderr, _ := oscmd.StderrPipe()
 	multi := io.MultiReader(stdout, stderr)
 
-	s := spin.New()
-	s.Set(spin.Spin1)
-
 	if print_output && *verbose {
 		oscmd.Stdout = os.Stdout
 		oscmd.Stderr = os.Stderr
@@ -386,10 +384,12 @@ func launchCommandAndWaitForOutput(command []string, stringToSearch string, prin
 	in.Split(bufio.ScanRunes)
 	found := false
 	out := ""
+	lastPrint := time.Now()
 	for in.Scan() {
 
-		if show_spinner {
-			fmt.Printf("\r %s", s.Next())
+		if show_spinner && time.Since(lastPrint) > time.Second {
+			fmt.Printf(". ")
+			lastPrint = time.Now()
 		}
 
 		out += in.Text()
