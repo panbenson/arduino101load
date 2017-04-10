@@ -15,7 +15,7 @@ import (
 	"time"
 
 	"github.com/kardianos/osext"
-	"github.com/mattn/go-shellwords"
+	shellwords "github.com/mattn/go-shellwords"
 )
 
 var (
@@ -35,7 +35,7 @@ var (
 	rtos_compliance_offset = flag.Int("rtos_fw_pos", 0, "RTOS FW ID offset")
 )
 
-const Version = "2.0.1"
+const Version = "2.0.2"
 
 const dfu_flags = "-d,8087:0ABA"
 const rtos_firmware = "quark.bin"
@@ -87,17 +87,22 @@ func main_load() {
 		}
 	}
 
-	dfu_search_command := []string{dfu, dfu_flags, "-l"}
+	// obtain a temporary filename
+	tmpfile, _ := ioutil.TempFile(os.TempDir(), "dfu")
+	tmpfile.Close()
+	os.Remove(tmpfile.Name())
+
+	dfu_search_command := []string{dfu, dfu_flags, "-U", tmpfile.Name(), "--alt", "4"}
 	var err error
 
 	for counter < 100 && board_found == false {
 		if counter%10 == 0 {
 			PrintlnVerbose("Waiting for device...")
 		}
-		err, found, _ := launchCommandAndWaitForOutput(dfu_search_command, "sensor_core", false, false)
+		err, found, _ := launchCommandAndWaitForOutput(dfu_search_command, "Setting Alternate Setting", false, false)
 		if err != nil {
-			fmt.Println(err)
-			os.Exit(1)
+			//fmt.Println(err)
+			//os.Exit(1)
 		}
 		if counter == 40 {
 			fmt.Println("Flashing is taking longer than expected")
@@ -106,6 +111,7 @@ func main_load() {
 		if found == true {
 			board_found = true
 			PrintlnVerbose("Device found!")
+			os.Remove(tmpfile.Name())
 			break
 		}
 		time.Sleep(100 * time.Millisecond)
