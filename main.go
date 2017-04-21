@@ -3,13 +3,15 @@ package main
 import (
 	"bufio"
 	"fmt"
-	"github.com/kardianos/osext"
 	"io"
 	"os"
 	"os/exec"
 	"path/filepath"
 	"runtime"
 	"strings"
+	"time"
+
+	"github.com/kardianos/osext"
 )
 
 var verbose bool
@@ -87,10 +89,28 @@ func main() {
 		serialnumberslice = []string{"-s", serialnumber}
 	}
 
+	adb_test := []string{adb}
+	adb_test = append(adb_test, serialnumberslice...)
+	adb_test = append(adb_test, "shell", "ps", "x")
+	err, running := launchCommandAndWaitForOutput(adb_test, filepath.Base(bin_file_name), false)
+
+	if running {
+		adb_kill := []string{adb}
+		adb_kill = append(adb_kill, serialnumberslice...)
+		adb_kill = append(adb_kill, "shell", "killall", filepath.Base(bin_file_name))
+		launchCommandAndWaitForOutput(adb_kill, "", false)
+		time.Sleep(2 * time.Second)
+	}
+
 	adb_push := []string{adb}
 	adb_push = append(adb_push, serialnumberslice...)
-	adb_push = append(adb_push, "push", bin_file_name, "/tmp/sketch.bin")
+	adb_push = append(adb_push, "push", bin_file_name, "/root/"+filepath.Base(bin_file_name))
 	err, _ = launchCommandAndWaitForOutput(adb_push, "", true)
+
+	adb_spawn := []string{adb}
+	adb_spawn = append(adb_spawn, serialnumberslice...)
+	adb_spawn = append(adb_spawn, "shell", "/root/"+filepath.Base(bin_file_name))
+	err, _ = launchCommandBackground(adb_spawn, "", false)
 
 	if err == nil {
 		fmt.Println("SUCCESS!")
@@ -99,6 +119,13 @@ func main() {
 		fmt.Println("ERROR: Upload failed")
 		os.Exit(1)
 	}
+}
+
+func launchCommandBackground(command []string, stringToSearch string, print_output bool) (error, bool) {
+	oscmd := exec.Command(command[0], command[1:]...)
+	tellCommandNotToSpawnShell(oscmd)
+	err := oscmd.Start()
+	return err, false
 }
 
 func launchCommandAndWaitForOutput(command []string, stringToSearch string, print_output bool) (error, bool) {
