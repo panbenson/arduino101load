@@ -107,6 +107,11 @@ func main() {
 	adb_push = append(adb_push, "push", bin_file_name, "/root/"+filepath.Base(bin_file_name))
 	err, _ = launchCommandAndWaitForOutput(adb_push, "", true)
 
+	adb_chmod := []string{adb}
+	adb_chmod = append(adb_chmod, serialnumberslice...)
+	adb_chmod = append(adb_chmod, "shell", "chmod", "+x", "/root/"+filepath.Base(bin_file_name))
+	err, _ = launchCommandAndWaitForOutput(adb_chmod, "", true)
+
 	adb_spawn := []string{adb}
 	adb_spawn = append(adb_spawn, serialnumberslice...)
 	adb_spawn = append(adb_spawn, "shell", "/root/"+filepath.Base(bin_file_name))
