@@ -14,8 +14,7 @@ import (
 	"strings"
 	"time"
 
-	"github.com/kardianos/osext"
-	"github.com/mattn/go-shellwords"
+	shellwords "github.com/mattn/go-shellwords"
 )
 
 var (
@@ -23,7 +22,7 @@ var (
 	quiet                  = flag.Bool("q", true, "Show quiet logging")
 	force                  = flag.Bool("f", false, "Force firmware update")
 	copier                 = flag.Bool("c", false, "Copy bin_file to bin_save")
-	core                   = flag.String("core", "", "Core version")
+	core                   = flag.String("core", "", "Firmware location")
 	from                   = flag.String("from", "", "Original file location")
 	to                     = flag.String("to", "", "Save file location")
 	dfu_path               = flag.String("dfu", "", "Location of dfu-util binaries")
@@ -35,7 +34,7 @@ var (
 	rtos_compliance_offset = flag.Int("rtos_fw_pos", 0, "RTOS FW ID offset")
 )
 
-const Version = "2.1.0"
+const Version = "2.2.0"
 
 const dfu_flags = "-d,8087:0ABA"
 const rtos_firmware = "quark.bin"
@@ -71,7 +70,7 @@ func main_load() {
 	*ble_compliance_string = strings.Replace(*ble_compliance_string, "\"", "", -1)
 	*rtos_compliance_string = strings.Replace(*rtos_compliance_string, "\"", "", -1)
 
-	dfu := *dfu_path + "/dfu-util"
+	dfu := filepath.Join(*dfu_path, "dfu-util")
 	dfu = filepath.ToSlash(dfu)
 
 	PrintlnVerbose("Serial Port: " + *com_port)
@@ -202,13 +201,12 @@ func main_load() {
 		}
 	}
 
-	executablePath, _ := osext.ExecutableFolder()
-	firmwarePath := executablePath + "/firmwares/" + *core + "/"
+	firmwarePath := *core
 
 	if needUpdateBLE || *force == true {
 
 		// flash current BLE firmware to partition 8
-		dfu_ble_flash_command := []string{dfu, dfu_flags, "-D", firmwarePath + ble_firmware, "--alt", "8"}
+		dfu_ble_flash_command := []string{dfu, dfu_flags, "-D", filepath.Join(firmwarePath, ble_firmware), "--alt", "8"}
 
 		fmt.Println("ATTENTION: BLE firmware is being flashed")
 		fmt.Println("DO NOT DISCONNECT THE BOARD")
@@ -223,7 +221,7 @@ func main_load() {
 	if needUpdateRTOS || *force == true {
 
 		// flash current RTOS firmware to partition 2
-		dfu_rtos_flash_command := []string{dfu, dfu_flags, "-D", firmwarePath + rtos_firmware, "--alt", "2"}
+		dfu_rtos_flash_command := []string{dfu, dfu_flags, "-D", filepath.Join(firmwarePath, rtos_firmware), "--alt", "2"}
 
 		fmt.Println("ATTENTION: RTOS firmware is being flashed")
 		fmt.Println("DO NOT DISCONNECT THE BOARD")
