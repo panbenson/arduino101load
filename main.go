@@ -9,7 +9,6 @@ import (
 	"path/filepath"
 	"runtime"
 	"strings"
-	"time"
 
 	"github.com/kardianos/osext"
 )
@@ -25,23 +24,22 @@ func PrintlnVerbose(a ...interface{}) {
 func main() {
 	fmt.Println("Starting download script...")
 
-	// ARG 1: ELF File to download
-	// ARG 2: serialnumber of target device
-	// path may contain \ need to change all to /
-
 	args := os.Args[1:]
 
 	bin_path, err := osext.ExecutableFolder()
 	adb := bin_path + "/adb"
 	adb = filepath.ToSlash(adb)
-	if len(args) != 3 {
-		fmt.Println("Wrong parameter list")
-		os.Exit(1)
-	}
+
+	serialnumber := ""
+	verbosity := "verbose"
 
 	bin_file_name := args[0]
-	verbosity := args[1]
-	serialnumber := args[2]
+	if len(args) > 1 {
+		serialnumber = args[1]
+	}
+	if len(args) > 2 {
+		verbosity = args[2]
+	}
 
 	if verbosity == "quiet" {
 		verbose = false
@@ -62,24 +60,24 @@ func main() {
 
 	adb_search_command := []string{adb, "devices"}
 
-	err, found := launchCommandAndWaitForOutput(adb_search_command, serialnumber, false)
+	err, found, _ := launchCommandAndWaitForOutput(adb_search_command, serialnumber, false)
 
 	if err == nil && found == false {
-		err, found = launchCommandAndWaitForOutput(adb_search_command, strings.ToUpper(serialnumber), false)
+		err, found, _ = launchCommandAndWaitForOutput(adb_search_command, strings.ToUpper(serialnumber), false)
 		if found == true {
 			serialnumber = strings.ToUpper(serialnumber)
 		}
 	}
 
 	if err == nil && found == false {
-		err, found = launchCommandAndWaitForOutput(adb_search_command, strings.ToLower(serialnumber), false)
+		err, found, _ = launchCommandAndWaitForOutput(adb_search_command, strings.ToLower(serialnumber), false)
 		if found == true {
 			serialnumber = strings.ToLower(serialnumber)
 		}
 	}
 
 	if err != nil {
-		fmt.Println("ERROR: Upload failed")
+		fmt.Println("ERROR: Target board not found")
 		os.Exit(1)
 	}
 
@@ -92,30 +90,34 @@ func main() {
 	adb_test := []string{adb}
 	adb_test = append(adb_test, serialnumberslice...)
 	adb_test = append(adb_test, "shell", "ps", "x")
-	err, running := launchCommandAndWaitForOutput(adb_test, filepath.Base(bin_file_name), false)
+	err, running, _ := launchCommandAndWaitForOutput(adb_test, "arduino-connector", false)
+
+	targetFolder := ""
 
 	if running {
-		adb_kill := []string{adb}
-		adb_kill = append(adb_kill, serialnumberslice...)
-		adb_kill = append(adb_kill, "shell", "killall", filepath.Base(bin_file_name))
-		launchCommandAndWaitForOutput(adb_kill, "", false)
-		time.Sleep(2 * time.Second)
+		/*
+			paths := strings.Split(match, "-config")
+			baseFolder := filepath.Dir(paths[0])
+			if _, err := os.Stat(baseFolder); err == nil {
+				targetFolder = baseFolder + "/sketches/"
+			}
+		*/
+		// this path must exist (the connector creates it)
+		targetFolder = "/tmp/sketches/"
+	} else {
+		fmt.Println("Arduino Connector not running on the target board")
+		os.Exit(1)
 	}
 
 	adb_push := []string{adb}
 	adb_push = append(adb_push, serialnumberslice...)
-	adb_push = append(adb_push, "push", bin_file_name, "/root/"+filepath.Base(bin_file_name))
-	err, _ = launchCommandAndWaitForOutput(adb_push, "", true)
+	adb_push = append(adb_push, "push", bin_file_name, targetFolder+filepath.Base(bin_file_name))
+	err, _, _ = launchCommandAndWaitForOutput(adb_push, "", true)
 
 	adb_chmod := []string{adb}
 	adb_chmod = append(adb_chmod, serialnumberslice...)
-	adb_chmod = append(adb_chmod, "shell", "chmod", "+x", "/root/"+filepath.Base(bin_file_name))
-	err, _ = launchCommandAndWaitForOutput(adb_chmod, "", true)
-
-	adb_spawn := []string{adb}
-	adb_spawn = append(adb_spawn, serialnumberslice...)
-	adb_spawn = append(adb_spawn, "shell", "/root/"+filepath.Base(bin_file_name))
-	err, _ = launchCommandBackground(adb_spawn, "", false)
+	adb_chmod = append(adb_chmod, "shell", "chmod", "+x", targetFolder+filepath.Base(bin_file_name))
+	err, _, _ = launchCommandAndWaitForOutput(adb_chmod, "", true)
 
 	if err == nil {
 		fmt.Println("SUCCESS!")
@@ -133,7 +135,7 @@ func launchCommandBackground(command []string, stringToSearch string, print_outp
 	return err, false
 }
 
-func launchCommandAndWaitForOutput(command []string, stringToSearch string, print_output bool) (error, bool) {
+func launchCommandAndWaitForOutput(command []string, stringToSearch string, print_output bool) (error, bool, string) {
 	oscmd := exec.Command(command[0], command[1:]...)
 	tellCommandNotToSpawnShell(oscmd)
 	stdout, _ := oscmd.StdoutPipe()
@@ -141,6 +143,7 @@ func launchCommandAndWaitForOutput(command []string, stringToSearch string, prin
 	multi := io.MultiReader(stderr, stdout)
 	err := oscmd.Start()
 	in := bufio.NewScanner(multi)
+	matchingLine := ""
 	in.Split(bufio.ScanLines)
 	found := false
 	for in.Scan() {
@@ -149,10 +152,11 @@ func launchCommandAndWaitForOutput(command []string, stringToSearch string, prin
 		}
 		if stringToSearch != "" {
 			if strings.Contains(in.Text(), stringToSearch) {
+				matchingLine = in.Text()
 				found = true
 			}
 		}
 	}
 	err = oscmd.Wait()
-	return err, found
+	return err, found, matchingLine
 }
