@@ -34,7 +34,7 @@ var (
 	rtos_compliance_offset = flag.Int("rtos_fw_pos", 0, "RTOS FW ID offset")
 )
 
-const Version = "2.2.0"
+const Version = "2.2.1"
 
 const dfu_flags = "-d,8087:0ABA"
 const rtos_firmware = "quark.bin"
