@@ -34,7 +34,7 @@ var (
 	rtos_compliance_offset = flag.Int("rtos_fw_pos", 0, "RTOS FW ID offset")
 )
 
-const Version = "2.2.1"
+const Version = "2.2.2"
 
 const dfu_flags = "-d,8087:0ABA"
 const rtos_firmware = "quark.bin"
@@ -201,7 +201,14 @@ func main_load() {
 		}
 	}
 
-	firmwarePath := *core
+	firmwarePath, _ := os.Executable()
+	firmwarePath = filepath.Join(filepath.Dir(firmwarePath), "firmwares")
+
+	if stat, err := os.Stat(*core); err == nil && stat.IsDir() {
+    	firmwarePath = *core
+	} else {
+		firmwarePath = filepath.Join(firmwarePath, *core)
+	}
 
 	if needUpdateBLE || *force == true {
 
