@@ -8,8 +8,13 @@ multiplatform launcher for Arduino101 dfu-util flashing utility
 * execute
 ```bash
 export GOPATH=$PWD
-go get
+export GOBIN=.
+# run with go < 1.18, set flag for compiling non-module go
+export GO111MODULE=auto
+go get -d
 go build
+# replace recompiled version in Arduino15
+cp arduino101load /Users/$USER/Library/Arduino15/packages/Intel/tools/arduino101load/2.0.1/arduino101load
 ```
 to produce a binary of `arduino101load` for your architecture.
 
